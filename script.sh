@@ -125,8 +125,8 @@ collect_locale() {
     dialog --clear --backtitle "$APP_NAME" \
       --title "Language / Locale" \
       --menu "Choose your locale:" \
-      20 70 12 \  # 20×70 box, 12 visible rows
-    "${options[@]}" \
+      20 70 12 \
+      "${options[@]}" \
       --scrollbar \
       3>&1 1>&2 2>&3
   ) || die "Locale selection cancelled"
