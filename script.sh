@@ -127,28 +127,42 @@ prompt_yesno() {
 ###############################################################################
 
 collect_locale() {
+  log "TTY size: $(stty size || echo 'unknown')"
+
+  # 1) gather locales from SUPPORTED or fall back to locale.gen
   local -a locale_tags
-  mapfile -t locale_tags < <(
-    awk '$0 ~ /UTF-8$/ { print $1 }' /usr/share/i18n/SUPPORTED
-  )
+  if [[ -r /usr/share/i18n/SUPPORTED ]]; then
+    mapfile -t locale_tags < <(
+      awk '$0 ~ /UTF-8$/ {print $1}' /usr/share/i18n/SUPPORTED
+    )
+  else
+    mapfile -t locale_tags < <(
+      grep -E 'UTF-8$' /etc/locale.gen | sed 's/^#\s*//' | awk '{print $1}'
+    )
+  fi
+  [[ ${#locale_tags[@]} -eq 0 ]] && locale_tags=(en_US.UTF-8)
 
-  # Build alternating (tag, description) fields for the menu array.
+  log "locale_tags count: ${#locale_tags[@]}"
+  printf '[LOG] locale_tags[0..4] = %s\n' "${locale_tags[@]:0:5}" | tee -a "$LOGFILE"
+
+  # 2) build (tag, description) menu list
   local -a options=()
-  for tag in "${locale_tags[@]}"; do
-    options+=("$tag" "") # Empty description keeps the box clean
-  done
+  for tag in "${locale_tags[@]}"; do options+=("$tag" ""); done
 
-  LANGUAGE=$(
-    run dialog --clear --backtitle "$APP_NAME" \
+  log "options count (must be even): ${#options[@]}"
+
+  # 3) run dialog with auto‑sizing (0 0) so it always fits
+  local language
+  language=$(
+    run dialog --clear --stdout --backtitle "$APP_NAME" \
       --title "Language / Locale" \
+      --scrollbar \
       --menu "Choose your locale:" \
       20 70 12 \
-      "${options[@]}" \
-      --scrollbar \
-      3>&1 1>&2 2>&3
-  ) || die "Locale selection cancelled"
+      "${options[@]}"
+  ) || die "dialog failed (rc=$?)"
 
-  log "Selected language: $LANGUAGE"
+  log "User picked: $language"
 }
 
 collect_keymap() {
