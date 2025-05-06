@@ -139,7 +139,7 @@ collect_locale() {
   done
 
   LANGUAGE=$(
-    dialog --clear --backtitle "$APP_NAME" \
+    run dialog --clear --backtitle "$APP_NAME" \
       --title "Language / Locale" \
       --menu "Choose your locale:" \
       20 70 12 \
