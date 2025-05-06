@@ -308,7 +308,15 @@ printf "root:%s" "$PASSWORD" | chpasswd
 sed -i 's/^# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' /etc/sudoers
 
 # Bootloader
-grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=Arch
+if [[ -d /sys/firmware/efi ]]; then
+    # UEFI system
+    grub-install --target=x86_64-efi \
+                 --efi-directory=/boot \
+                 --bootloader-id=Arch
+else
+    # Legacy BIOS system
+    grub-install --target=i386-pc "$TARGET_DISK"
+fi
 grub-mkconfig -o /boot/grub/grub.cfg
 
 log "Configuration in chroot complete!"
