@@ -162,7 +162,7 @@ collect_locale() {
       "${options[@]}"
   ) || die "dialog failed (rc=$?)"
 
-  log "User picked: $language"
+  log "Selected locale: $language"
 }
 
 collect_keymap() {
@@ -170,29 +170,31 @@ collect_keymap() {
   if command -v localectl >/dev/null 2>&1; then
     mapfile -t keymaps < <(localectl list-keymaps)
   else
-    mapfile -t keymaps < <(find /usr/share/kbd/keymaps -type f -name '*.map*' -printf '%f\n' | sed 's/\.map.*//' | sort -u)
+    mapfile -t keymaps < <(
+      find /usr/share/kbd/keymaps -type f -name '*.map*' -printf '%f\n' |
+        sed 's/\.map.*//' | sort -u
+    )
   fi
   [[ ${#keymaps[@]} -eq 0 ]] && keymaps=(us)
 
+  # (tag, description) pairs for the menu
   local -a options=()
-  for km in "${keymaps[@]}"; do
-    options+=("$km" "")
-  done
+  for km in "${keymaps[@]}"; do options+=("$km" ""); done
 
-  KEYMAP=$(dialog --clear --backtitle "$APP_NAME" \
-    --title "Keyboard layout" \
-    --menu "Choose console keymap:" \
-    20 70 12 \
-    "${options[@]}" \
-    --scrollbar \
-    --default-item "${KEYMAP}" \
-    3>&1 1>&2 2>&3) || die "Keymap selection cancelled"
+  # --scrollbar must come **before** --menu, sizes before the tag list
+  KEYMAP=$(
+    dialog --clear --stdout --backtitle "$APP_NAME" \
+      --title "Keyboard layout" \
+      --scrollbar \
+      --menu "Choose console keymap:" \
+      0 0 12 \
+      "${options[@]}" \
+      --default-item "$KEYMAP"
+  ) || die "Keymap selection cancelled"
+
   log "Selected keymap: $KEYMAP"
 
-  # -------------------------------------------------------------
-  # Immediately apply the keymap inside the live ISO so further
-  # user input (especially passwords) uses the expected layout.
-  # -------------------------------------------------------------
+  # Apply the layout immediately in the live session
   if loadkeys "$KEYMAP" 2>/dev/null; then
     log "Console keymap switched to $KEYMAP for live session"
   else
