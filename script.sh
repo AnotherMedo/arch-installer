@@ -224,6 +224,8 @@ collect_user() {
       return 0
     fi
 
+    dialog --backtitle "$APP_NAME" --title "Mismatch" \
+      --msgbox "\nPasswords did not match – please try again.\n" 8 60 || true
     attempt=$((attempt + 1))
   done
 
