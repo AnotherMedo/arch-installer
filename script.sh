@@ -339,7 +339,7 @@ main() {
     partition_manual
   fi
 
-  install_arch
+  run install_arch
   chroot_config
 
   dialog --backtitle "$APP_NAME" --title "Finished" --msgbox "\nInstallation complete!  You may reboot now.\n" 10 60
