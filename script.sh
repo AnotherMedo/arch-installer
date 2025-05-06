@@ -282,7 +282,7 @@ install_arch() {
 # Stage 4 – Configure system (inside chroot)                                 #
 ###############################################################################
 chroot_config() {
-  cat >"$ROOT_MOUNT/root/arch‑postinstall.sh" <<POST
+  cat >"$ROOT_MOUNT/root/arch‑tui‑postinstall.sh" <<POST
 #!/usr/bin/env bash
 set -euo pipefail
 log() { echo "[chroot] \$*"; }
@@ -313,7 +313,7 @@ grub-mkconfig -o /boot/grub/grub.cfg
 
 log "Configuration in chroot complete!"
 POST
-  chmod +x "$ROOT_MOUNT/root/arch‑postinstall.sh"
+  chmod +x "$ROOT_MOUNT/root/arch‑tui‑postinstall.sh"
   arch-chroot "$ROOT_MOUNT" /root/arch‑tui‑postinstall.sh
   rm "$ROOT_MOUNT/root/arch‑tui‑postinstall.sh"
 }
