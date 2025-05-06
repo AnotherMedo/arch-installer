@@ -218,7 +218,7 @@ collect_user() {
     if [[ "$pass1" == "$pass2" ]]; then
       PASSWORD="$pass1"
       log "Password set successfully"
-      break
+      return 0
     fi
     dialog --backtitle "$APP_NAME" --title "Mismatch" --msgbox "\nPasswords did not match – please try again.\n" 8 60
     ((attempt++))
