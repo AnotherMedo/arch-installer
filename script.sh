@@ -241,7 +241,7 @@ collect_disk() {
   TARGET_DISK=$(prompt_menu "Disk" "Select installation disk:" "${disks[@]}")
   [ -n "$TARGET_DISK" ] || die "No disk selected."
 
-  run prompt_yesno "Partitioning" "Erase *all* data on $TARGET_DISK and use guided partitioning?" && INSTALL_MODE="guided‑erase" || INSTALL_MODE="manual"
+  prompt_yesno "Partitioning" "Erase *all* data on $TARGET_DISK and use guided partitioning?" && INSTALL_MODE="guided‑erase" || INSTALL_MODE="manual"
 }
 
 ###############################################################################
@@ -333,7 +333,7 @@ main() {
   collect_disk
 
   if [[ "$INSTALL_MODE" == "guided‑erase" ]]; then
-    partition_guided
+    run partition_guided
   else
     partition_manual
   fi
