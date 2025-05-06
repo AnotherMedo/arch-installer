@@ -132,28 +132,21 @@ collect_locale() {
     awk '$0 ~ /UTF-8$/ { print $1 }' /usr/share/i18n/SUPPORTED
   )
 
-  log "locale_tags count: ${#locale_tags[@]}"
-  printf '[LOG] locale_tags = '
-  declare -p locale_tags | tee -a "$LOGFILE"
-
+  # Build alternating (tag, description) fields for the menu array.
   local -a options=()
   for tag in "${locale_tags[@]}"; do
-    options+=("$tag" "")
+    options+=("$tag" "") # Empty description keeps the box clean
   done
 
-  log "options count (must be even!): ${#options[@]}"
-  printf '[LOG] options = '
-  declare -p options | tee -a "$LOGFILE"
-
   LANGUAGE=$(
-    run dialog --clear --backtitle "$APP_NAME" \
+    dialog --clear --backtitle "$APP_NAME" \
       --title "Language / Locale" \
       --menu "Choose your locale:" \
-      --scrollbar \
       20 70 12 \
       "${options[@]}" \
+      --scrollbar \
       3>&1 1>&2 2>&3
-  ) || die "Locale selection failed"
+  ) || die "Locale selection cancelled"
 
   log "Selected language: $LANGUAGE"
 }
