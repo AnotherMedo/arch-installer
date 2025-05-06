@@ -226,7 +226,7 @@ collect_user() {
 
     dialog --backtitle "$APP_NAME" --title "Mismatch" \
       --msgbox "\nPasswords did not match – please try again.\n" 8 60
-    ((attempt++))
+    attempt=((attempt++))
   done
 
   die "Failed to set matching password after 3 attempts"
