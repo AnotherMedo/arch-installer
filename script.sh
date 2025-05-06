@@ -209,7 +209,7 @@ collect_timezone() {
 
 collect_user() {
   USERNAME=$(prompt_input "User" "Choose a new username:")
-
+  log "Username set to: $USERNAME"
   # Password confirmation loop (3 attempts max)
   local attempt=0 pass1 pass2
   while ((attempt < 3)); do
@@ -217,6 +217,7 @@ collect_user() {
     pass2=$(prompt_password "Confirm password" "Re‑enter the same password:") || die "Password confirmation cancelled"
     if [[ "$pass1" == "$pass2" ]]; then
       PASSWORD="$pass1"
+      log "Password set successfully"
       break
     fi
     dialog --backtitle "$APP_NAME" --title "Mismatch" --msgbox "\nPasswords did not match – please try again.\n" 8 60
