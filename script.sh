@@ -212,7 +212,7 @@ collect_user() {
   log "Username set to: $USERNAME"
   # Password confirmation loop (3 attempts max)
   local attempt=0 pass1 pass2
-  while [$attempt <3]; do
+  while [ $attempt -lt 3 ]; do
     pass1=$(prompt_password "Password" "Enter password for $USERNAME:") || die "Password entry cancelled"
     pass2=$(prompt_password "Confirm password" "Re‑enter the same password:") || die "Password confirmation cancelled"
     if [[ "$pass1" == "$pass2" ]]; then
