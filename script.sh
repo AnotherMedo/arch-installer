@@ -212,7 +212,7 @@ collect_user() {
   log "Username set to: $USERNAME"
 
   local attempt=0 pass1 pass2
-  while ((attempt < 3)); do
+  while [ "$attempt" -lt 3 ]; do
     pass1=$(prompt_password "Password" "Enter password for $USERNAME:") ||
       die "Password entry cancelled"
     pass2=$(prompt_password "Confirm password" "Re‑enter the same password:") ||
@@ -226,7 +226,7 @@ collect_user() {
 
     dialog --backtitle "$APP_NAME" --title "Mismatch" \
       --msgbox "\nPasswords did not match – please try again.\n" 8 60
-    attempt=((attempt++))
+    attempt=$((attempt + 1))
   done
 
   die "Failed to set matching password after 3 attempts"
