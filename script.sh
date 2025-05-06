@@ -210,20 +210,26 @@ collect_timezone() {
 collect_user() {
   USERNAME=$(prompt_input "User" "Choose a new username:")
   log "Username set to: $USERNAME"
-  # Password confirmation loop (3 attempts max)
+
   local attempt=0 pass1 pass2
-  while [ $attempt -lt 3 ]; do
-    pass1=$(prompt_password "Password" "Enter password for $USERNAME:") || die "Password entry cancelled"
-    pass2=$(prompt_password "Confirm password" "Re‑enter the same password:") || die "Password confirmation cancelled"
-    if [[ "$pass1" == "$pass2" ]]; then
-      PASSWORD="$pass1"
+  while ((attempt < 3)); do
+    pass1=$(prompt_password "Password" "Enter password for $USERNAME:") ||
+      die "Password entry cancelled"
+    pass2=$(prompt_password "Confirm password" "Re‑enter the same password:") ||
+      die "Password confirmation cancelled"
+
+    if [[ $pass1 == "$pass2" ]]; then
+      PASSWORD=$pass1
       log "Password set successfully"
       return 0
     fi
-    dialog --backtitle "$APP_NAME" --title "Mismatch" --msgbox "\nPasswords did not match – please try again.\n" 8 60
-    attempt=$(($attempt + 1))
+
+    dialog --backtitle "$APP_NAME" --title "Mismatch" \
+      --msgbox "\nPasswords did not match – please try again.\n" 8 60
+    ((attempt++))
   done
-  [[ -z "$PASSWORD" ]] && die "Failed to set matching password after 3 attempts"
+
+  die "Failed to set matching password after 3 attempts"
 }
 
 collect_disk() {
