@@ -34,6 +34,23 @@ EFI_MOUNT="/mnt/boot"
 ROOT_MOUNT="/mnt"
 
 ###############################################################################
+# Debug helpers
+###############################################################################
+# Turn Bash x‑trace on only for commands we wrap with run().
+# The trace is written to $LOGFILE but not to the screen (TUI stays clean).
+BASH_XTRACEFD=9    # fd 9 will carry the x‑trace
+exec 9>>"$LOGFILE" # open it for appending
+
+run() {
+  set -o xtrace # enable x‑trace for the *next* command
+  "$@"          # execute the command exactly as we received it
+  local rc=$?
+  set +o xtrace        # back to quiet mode
+  log "[RC] $1 -> $rc" # record the return code
+  return $rc
+}
+
+###############################################################################
 # Helper functions                                                            #
 ###############################################################################
 log() { printf "[LOG] %s\n" "$*" | tee -a "$LOGFILE"; }
@@ -115,21 +132,28 @@ collect_locale() {
     awk '$0 ~ /UTF-8$/ { print $1 }' /usr/share/i18n/SUPPORTED
   )
 
-  # Build alternating (tag, description) fields for the menu array.
+  log "locale_tags count: ${#locale_tags[@]}"
+  printf '[LOG] locale_tags = '
+  declare -p locale_tags | tee -a "$LOGFILE"
+
   local -a options=()
   for tag in "${locale_tags[@]}"; do
-    options+=("$tag" "") # Empty description keeps the box clean
+    options+=("$tag" "")
   done
 
+  log "options count (must be even!): ${#options[@]}"
+  printf '[LOG] options = '
+  declare -p options | tee -a "$LOGFILE"
+
   LANGUAGE=$(
-    dialog --clear --backtitle "$APP_NAME" \
+    run dialog --clear --backtitle "$APP_NAME" \
       --title "Language / Locale" \
       --menu "Choose your locale:" \
+      --scrollbar \
       20 70 12 \
       "${options[@]}" \
-      --scrollbar \
       3>&1 1>&2 2>&3
-  ) || die "Locale selection cancelled"
+  ) || die "Locale selection failed"
 
   log "Selected language: $LANGUAGE"
 }
