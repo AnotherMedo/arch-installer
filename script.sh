@@ -187,9 +187,8 @@ collect_keymap() {
       --title "Keyboard layout" \
       --scrollbar \
       --menu "Choose console keymap:" \
-      0 0 12 \
-      "${options[@]}" \
-      --default-item "$KEYMAP"
+      20 70 12 \
+      "${options[@]}"
   ) || die "Keymap selection cancelled"
 
   log "Selected keymap: $KEYMAP"
