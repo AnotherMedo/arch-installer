@@ -315,9 +315,9 @@ POST
 # Main flow                                                                  #
 ###############################################################################
 main() {
+  log "STARTING ARCH INSTALLER"
   require_root
   require_dialog
-
   dialog --backtitle "$APP_NAME" --title "Welcome" --msgbox "\nWelcome to the $APP_NAME!\nPress <OK> to begin the guided setup.\n" 10 60
 
   collect_locale
