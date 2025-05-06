@@ -239,6 +239,7 @@ collect_disk() {
     disks+=("$dev" "$size")
   done < <(lsblk -rnd -o NAME,SIZE | awk '$1 !~ /^loop/ {print "/dev/"$1, $2}')
   TARGET_DISK=$(prompt_menu "Disk" "Select installation disk:" "${disks[@]}")
+  TARGET_DISK=${TARGET_DISK%%[[:space:]]*}
   [ -n "$TARGET_DISK" ] || die "No disk selected."
 
   prompt_yesno "Partitioning" "Erase *all* data on $TARGET_DISK and use guided partitioning?" && INSTALL_MODE="guided‑erase" || INSTALL_MODE="manual"
