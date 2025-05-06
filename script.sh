@@ -313,8 +313,11 @@ grub-mkconfig -o /boot/grub/grub.cfg
 
 log "Configuration in chroot complete!"
 POST
+  log "Successfully created post install script"
   chmod +x "$ROOT_MOUNT/root/arch‑tui‑postinstall.sh"
+  log "Successfully modified access rights for post install script"
   arch-chroot "$ROOT_MOUNT" /root/arch‑tui‑postinstall.sh
+  log "Successfully executed post install script"
   rm "$ROOT_MOUNT/root/arch‑tui‑postinstall.sh"
 }
 
@@ -339,7 +342,7 @@ main() {
     partition_manual
   fi
 
-  install_arch
+  run install_arch
   chroot_config
 
   dialog --backtitle "$APP_NAME" --title "Finished" --msgbox "\nInstallation complete!  You may reboot now.\n" 10 60
