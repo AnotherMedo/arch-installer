@@ -23,21 +23,23 @@ IFS=$'\n\t'
 ###############################################################################
 APP_NAME="Arch TUI Installer"
 LOGFILE="/tmp/arch‑installer.log"
-LANGUAGE="en_US.UTF‑8"      # will be overwritten by UI
-KEYMAP="us"                 # ditto
-TIMEZONE="UTC"              # ditto
-USERNAME=""                 # ditto
-PASSWORD=""                 # ditto
+
+LANGUAGE="en_US.UTF‑8" # will be overwritten by UI
+KEYMAP="us"            # ditto
+TIMEZONE="UTC"         # ditto
+USERNAME=""            # ditto
+PASSWORD=""            # ditto
+DESKTOP="none"         # ditto (gnome/kde/cinnamon/xfce/hyprland/sway/i3/none)
+
 TARGET_DISK=""              # /dev/…
-INSTALL_MODE="guided‑erase" # or "manual"
+INSTALL_MODE="guided‑erase" # guided‑erase | guided‑alongside | manual
+
 EFI_MOUNT="/mnt/boot"
 ROOT_MOUNT="/mnt"
 
 ###############################################################################
-# Debug helpers
+# Debug helpers                                                               #
 ###############################################################################
-# Turn Bash x‑trace on only for commands we wrap with run().
-# The trace is written to $LOGFILE but not to the screen (TUI stays clean).
 BASH_XTRACEFD=9    # fd 9 will carry the x‑trace
 exec 9>>"$LOGFILE" # open it for appending
 
@@ -64,22 +66,27 @@ require_root() {
   [[ $EUID -eq 0 ]] || die "Run as root (e.g. sudo su) before starting $APP_NAME."
 }
 
+require_uefi() {
+  if [[ ! -d /sys/firmware/efi ]]; then
+    dialog --clear --backtitle "$APP_NAME" --title "Unsupported system" \
+      --msgbox "\nThis installer only supports UEFI firmware.\nReboot, enable UEFI, or switch to another installer.\n" 10 60
+    die "Legacy BIOS detected – aborting."
+  fi
+}
+
 require_dialog() {
   command -v dialog >/dev/null 2>&1 && return
   log "dialog not found – installing with pacman …"
   pacman -Sy --noconfirm dialog || die "Failed to install dialog."
 }
 
-cleanup() {
-  dialog --clear || true
-}
+cleanup() { dialog --clear || true; }
 trap cleanup EXIT
 
 ###############################################################################
 # User‑interface wrappers (dialog)                                            #
 ###############################################################################
-# NB: Arch ISO ships with dialog by default; whiptail works too with the same
-# API.  Abstracted to keep the rest of the script clean.
+# Arch ISO ships with dialog by default; whiptail works too with the same API.
 
 prompt_menu() {
   local title="$1"
@@ -123,46 +130,27 @@ prompt_yesno() {
 }
 
 ###############################################################################
-# Stage 1 – Collect configuration                                            #
+# Stage 1 – Collect configuration                                             #
 ###############################################################################
 
 collect_locale() {
   log "TTY size: $(stty size || echo 'unknown')"
 
-  # 1) gather locales from SUPPORTED or fall back to locale.gen
   local -a locale_tags
   if [[ -r /usr/share/i18n/SUPPORTED ]]; then
-    mapfile -t locale_tags < <(
-      awk '$0 ~ /UTF-8$/ {print $1}' /usr/share/i18n/SUPPORTED
-    )
+    mapfile -t locale_tags < <(awk '$0 ~ /UTF-8$/ {print $1}' /usr/share/i18n/SUPPORTED)
   else
-    mapfile -t locale_tags < <(
-      grep -E 'UTF-8$' /etc/locale.gen | sed 's/^#\s*//' | awk '{print $1}'
-    )
+    mapfile -t locale_tags < <(grep -E 'UTF-8$' /etc/locale.gen | sed 's/^#\s*//' | awk '{print $1}')
   fi
   [[ ${#locale_tags[@]} -eq 0 ]] && locale_tags=(en_US.UTF-8)
 
-  log "locale_tags count: ${#locale_tags[@]}"
-  printf '[LOG] locale_tags[0..4] = %s\n' "${locale_tags[@]:0:5}" | tee -a "$LOGFILE"
-
-  # 2) build (tag, description) menu list
   local -a options=()
   for tag in "${locale_tags[@]}"; do options+=("$tag" ""); done
 
-  log "options count (must be even): ${#options[@]}"
-
-  # 3) run dialog with auto‑sizing (0 0) so it always fits
-  local language
-  language=$(
-    run dialog --clear --stdout --backtitle "$APP_NAME" \
-      --title "Language / Locale" \
-      --scrollbar \
-      --menu "Choose your locale:" \
-      20 70 12 \
-      "${options[@]}"
-  ) || die "dialog failed (rc=$?)"
-
-  log "Selected locale: $language"
+  LANGUAGE=$(dialog --clear --stdout --backtitle "$APP_NAME" \
+    --title "Language / Locale" --scrollbar \
+    --menu "Choose your locale:" 20 70 12 "${options[@]}") || die "Locale selection cancelled"
+  log "Selected locale: $LANGUAGE"
 }
 
 collect_keymap() {
@@ -170,87 +158,106 @@ collect_keymap() {
   if command -v localectl >/dev/null 2>&1; then
     mapfile -t keymaps < <(localectl list-keymaps)
   else
-    mapfile -t keymaps < <(
-      find /usr/share/kbd/keymaps -type f -name '*.map*' -printf '%f\n' |
-        sed 's/\.map.*//' | sort -u
-    )
+    mapfile -t keymaps < <(find /usr/share/kbd/keymaps -type f -name '*.map*' -printf '%f\n' | sed 's/\.map.*//' | sort -u)
   fi
   [[ ${#keymaps[@]} -eq 0 ]] && keymaps=(us)
 
-  # (tag, description) pairs for the menu
   local -a options=()
   for km in "${keymaps[@]}"; do options+=("$km" ""); done
 
-  # --scrollbar must come **before** --menu, sizes before the tag list
-  KEYMAP=$(
-    dialog --clear --stdout --backtitle "$APP_NAME" \
-      --title "Keyboard layout" \
-      --scrollbar \
-      --menu "Choose console keymap:" \
-      20 70 12 \
-      "${options[@]}"
-  ) || die "Keymap selection cancelled"
-
+  KEYMAP=$(dialog --clear --stdout --backtitle "$APP_NAME" \
+    --title "Keyboard layout" --scrollbar \
+    --menu "Choose console keymap:" 20 70 12 "${options[@]}") || die "Keymap selection cancelled"
   log "Selected keymap: $KEYMAP"
 
-  # Apply the layout immediately in the live session
-  if loadkeys "$KEYMAP" 2>/dev/null; then
-    log "Console keymap switched to $KEYMAP for live session"
-  else
-    err "loadkeys $KEYMAP failed – layout may need full path"
-  fi
+  loadkeys "$KEYMAP" 2>/dev/null || err "loadkeys $KEYMAP failed – layout may need full path"
 }
 
 collect_timezone() {
-  TIMEZONE=$(prompt_input "Timezone" \
-    "Enter your IANA timezone (e.g. Europe/Zurich):" "$(curl -s --max-time 3 https://ipapi.co/timezone 2>/dev/null || echo UTC)")
+  local guess
+  guess=$(curl -s --max-time 3 https://ipapi.co/timezone 2>/dev/null || true)
+  TIMEZONE=$(prompt_input "Timezone" "Enter your IANA timezone (e.g. Europe/Zurich):" "${guess:-UTC}")
   log "Selected timezone: $TIMEZONE"
 }
 
 collect_user() {
-  USERNAME=$(prompt_input "User" "Choose a new username:")
+  USERNAME=$(prompt_input "User" "Choose a new username:") || die "Username input cancelled"
   log "Username set to: $USERNAME"
 
   local attempt=0 pass1 pass2
-  while [ "$attempt" -lt 3 ]; do
-    pass1=$(prompt_password "Password" "Enter password for $USERNAME:") ||
-      die "Password entry cancelled"
-    pass2=$(prompt_password "Confirm password" "Re‑enter the same password:") ||
-      die "Password confirmation cancelled"
-
+  while ((attempt < 3)); do
+    pass1=$(prompt_password "Password" "Enter password for $USERNAME:") || die "Password entry cancelled"
+    pass2=$(prompt_password "Confirm password" "Re‑enter the same password:") || die "Password confirmation cancelled"
     if [[ $pass1 == "$pass2" ]]; then
       PASSWORD=$pass1
       log "Password set successfully"
       return 0
     fi
-
     dialog --backtitle "$APP_NAME" --title "Mismatch" \
       --msgbox "\nPasswords did not match – please try again.\n" 8 60
-    attempt=$((attempt + 1))
+    ((attempt++))
   done
-
   die "Failed to set matching password after 3 attempts"
+}
+
+collect_desktop() {
+  DESKTOP=$(prompt_menu "Desktop Environment" "Select DE/WM to install:" \
+    gnome "GNOME" \
+    kde "KDE Plasma" \
+    cinnamon "Cinnamon" \
+    xfce "Xfce" \
+    hyprland "Hyprland (Wayland)" \
+    sway "Sway (Wayland)" \
+    i3 "i3 (X11 minimal)" \
+    none "None – bare bones") || die "Desktop selection cancelled"
+  log "Desktop set to: $DESKTOP"
 }
 
 collect_disk() {
   # List block devices ignoring ISO/loop devices.
-  local disks=()
-  while read -r dev size; do
-    disks+=("$dev" "$size")
-  done < <(lsblk -rnd -o NAME,SIZE | awk '$1 !~ /^loop/ {print "/dev/"$1, $2}')
+  local -a disks=()
+  while read -r dev size; do disks+=("$dev" "$size"); done < <(lsblk -rnd -o NAME,SIZE | awk '$1 !~ /^loop/ {print "/dev/"$1, $2}')
   TARGET_DISK=$(prompt_menu "Disk" "Select installation disk:" "${disks[@]}")
   TARGET_DISK=${TARGET_DISK%%[[:space:]]*}
-  [ -n "$TARGET_DISK" ] || die "No disk selected."
+  [[ -n "$TARGET_DISK" ]] || die "No disk selected."
 
-  prompt_yesno "Partitioning" "Erase *all* data on $TARGET_DISK and use guided partitioning?" && INSTALL_MODE="guided‑erase" || INSTALL_MODE="manual"
+  # Detect existing operating systems/partitions
+  local existing="false"
+  if command -v os-prober >/dev/null 2>&1 && os-prober | grep -q .; then
+    existing="true"
+  else
+    # Fallback heuristic: any partitions on the disk?
+    if lsblk -nr "$TARGET_DISK" | grep -q '^├\|^└'; then existing="true"; fi
+  fi
+
+  if [[ $existing == "true" ]]; then
+    INSTALL_MODE=$(prompt_menu "Installation mode" "Existing OSes detected on $TARGET_DISK. Choose action:" \
+      guided‑alongside "Install alongside existing OS(es)" \
+      guided‑erase "Erase disk and install fresh" \
+      manual "Manual partitioning")
+  else
+    prompt_yesno "Partitioning" "Erase *all* data on $TARGET_DISK and use guided partitioning?" && INSTALL_MODE="guided‑erase" || INSTALL_MODE="manual"
+  fi
+
+  log "Selected install mode: $INSTALL_MODE"
 }
 
 ###############################################################################
 # Stage 2 – Partition & format                                               #
 ###############################################################################
+
+prepare_mountpoints() {
+  umount -R "$ROOT_MOUNT" 2>/dev/null || true
+  umount -R "$EFI_MOUNT" 2>/dev/null || true
+  rm -rf "$ROOT_MOUNT"/* 2>/dev/null || true
+}
+
 partition_guided() {
   log "Guided partitioning on $TARGET_DISK …"
-  # Sample layout: EFI 512 MiB, the rest /.  Adjust as desired.
+  prepare_mountpoints
+
+  # Completely wipe signatures & partition table to avoid rerun failures
+  wipefs -af "$TARGET_DISK"
   sgdisk --zap-all "$TARGET_DISK"
   sgdisk -n 1:0:+512MiB -t 1:ef00 "$TARGET_DISK"
   sgdisk -n 2:0:0 -t 2:8300 "$TARGET_DISK"
@@ -263,10 +270,11 @@ partition_guided() {
   mount "${TARGET_DISK}1" "$EFI_MOUNT"
 }
 
-partition_manual() {
-  dialog --msgbox "\nYou chose manual partitioning.  Press <OK> to open fdisk; create partitions, then exit fdisk.\n" 10 60
-  fdisk "$TARGET_DISK"
-  dialog --msgbox "\nNow create filesystems & mount under /mnt manually in another TTY, then return here and press <OK>.\n" 10 60
+partition_alongside() {
+  dialog --backtitle "$APP_NAME" --title "Partitioning" \
+    --msgbox "\nAutomatic install‑alongside is experimental.\nYou will now be taken to 'cfdisk' to shrink an existing partition and create space for Arch.\nAfterwards, create a new partition for root (and optionally EFI) and quit.\n" 12 70
+  cfdisk "$TARGET_DISK"
+  dialog --msgbox "\nNow format and mount your new root (and EFI, if created) partitions under /mnt in another TTY, then press <OK>.\n" 10 60
 }
 
 ###############################################################################
@@ -274,7 +282,7 @@ partition_manual() {
 ###############################################################################
 install_arch() {
   log "Installing base system …"
-  pacstrap -K "$ROOT_MOUNT" base linux linux-firmware dialog sudo networkmanager grub efibootmgr || die "pacstrap failed"
+  pacstrap -K "$ROOT_MOUNT" base linux linux-firmware dialog sudo networkmanager grub efibootmgr os-prober || die "pacstrap failed"
   genfstab -U "$ROOT_MOUNT" >>"$ROOT_MOUNT/etc/fstab"
 }
 
@@ -282,12 +290,26 @@ install_arch() {
 # Stage 4 – Configure system (inside chroot)                                 #
 ###############################################################################
 chroot_config() {
-  cat >"$ROOT_MOUNT/root/arch‑tui‑postinstall.sh" <<POST
+  cat >"$ROOT_MOUNT/root/arch‑tui‑postinstall.sh" <<'POST'
 #!/usr/bin/env bash
 set -euo pipefail
-log() { echo "[chroot] \$*"; }
+log() { echo "[chroot] $*"; }
+# Variables from outer script will be substituted prior to cat > … <<'POST'
+POST
+  # shellcheck disable=SC2154  # vars defined in outer scope
+  cat >>"$ROOT_MOUNT/root/arch‑tui‑postinstall.sh" <<POST
+LANGUAGE="$LANGUAGE"
+TIMEZONE="$TIMEZONE"
+KEYMAP="$KEYMAP"
+USERNAME="$USERNAME"
+PASSWORD="$PASSWORD"
+DESKTOP="$DESKTOP"
+TARGET_DISK="$TARGET_DISK"
+POST
 
-# Locale
+  cat >>"$ROOT_MOUNT/root/arch‑tui‑postinstall.sh" <<'POST'
+
+# Locale & time
 sed -i "s/^#\($LANGUAGE\)/\1/" /etc/locale.gen
 locale-gen
 ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
@@ -301,30 +323,48 @@ EOF
 # NetworkManager
 systemctl enable NetworkManager
 
-# Users
+# User accounts
 useradd -mG wheel $USERNAME
 printf "%s:%s" "$USERNAME" "$PASSWORD" | chpasswd
 printf "root:%s" "$PASSWORD" | chpasswd
 
-# Bootloader
+# Desktop environment
+case "$DESKTOP" in
+  gnome)
+    pacman -S --noconfirm gnome gdm && systemctl enable gdm ;;
+  kde)
+    pacman -S --noconfirm plasma kde-applications sddm && systemctl enable sddm ;;
+  cinnamon)
+    pacman -S --noconfirm cinnamon gdm && systemctl enable gdm ;;
+  xfce)
+    pacman -S --noconfirm xfce4 xfce4-goodies lightdm lightdm-gtk-greeter && systemctl enable lightdm ;;
+  hyprland)
+    pacman -S --noconfirm hyprland waybar xdg-desktop-portal-hyprland ;;
+  sway)
+    pacman -S --noconfirm sway swaybg xwayland ;;
+  i3)
+    pacman -S --noconfirm i3-gaps i3status dmenu ;;
+  none)
+    ;; # nothing extra
+esac
+
+# Bootloader – UEFI only (checked earlier)
 if [[ -d /sys/firmware/efi ]]; then
-    # UEFI system
     grub-install --target=x86_64-efi \
                  --efi-directory=/boot \
                  --bootloader-id=Arch
 else
-    # Legacy BIOS system
-    grub-install --target=i386-pc "$TARGET_DISK"
+    log "ERROR: Legacy BIOS detected inside chroot – this should not happen!"
+    exit 1
 fi
+
 grub-mkconfig -o /boot/grub/grub.cfg
 
 log "Configuration in chroot complete!"
 POST
-  log "Successfully created post install script"
+
   chmod +x "$ROOT_MOUNT/root/arch‑tui‑postinstall.sh"
-  log "Successfully modified access rights for post install script"
   arch-chroot "$ROOT_MOUNT" /root/arch‑tui‑postinstall.sh
-  log "Successfully executed post install script"
   rm "$ROOT_MOUNT/root/arch‑tui‑postinstall.sh"
 }
 
@@ -335,24 +375,35 @@ main() {
   log "STARTING ARCH INSTALLER"
   require_root
   require_dialog
-  dialog --backtitle "$APP_NAME" --title "Welcome" --msgbox "\nWelcome to the $APP_NAME!\nPress <OK> to begin the guided setup.\n" 10 60
+  require_uefi
+
+  dialog --backtitle "$APP_NAME" --title "Welcome" \
+    --msgbox "\nWelcome to the $APP_NAME!\nPress <OK> to begin the guided setup.\n" 10 60
 
   collect_locale
   collect_keymap
   collect_timezone
   collect_user
+  collect_desktop
   collect_disk
 
-  if [[ "$INSTALL_MODE" == "guided‑erase" ]]; then
+  case "$INSTALL_MODE" in
+  guided‑erase)
     run partition_guided
-  else
-    partition_manual
-  fi
+    ;;
+  guided‑alongside)
+    partition_alongside
+    ;;
+  manual)
+    partition_alongside
+    ;; # same helper currently
+  esac
 
   run install_arch
   chroot_config
 
-  dialog --backtitle "$APP_NAME" --title "Finished" --msgbox "\nInstallation complete!  You may reboot now.\n" 10 60
+  dialog --backtitle "$APP_NAME" --title "Finished" \
+    --msgbox "\nInstallation complete!  You may reboot now.\n" 10 60
 }
 
 main "$@"
