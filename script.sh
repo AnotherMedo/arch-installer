@@ -296,7 +296,6 @@ set -euo pipefail
 log() { echo "[chroot] $*"; }
 # Variables from outer script will be substituted prior to cat > … <<'POST'
 POST
-  # shellcheck disable=SC2154  # vars defined in outer scope
   cat >>"$ROOT_MOUNT/root/arch‑tui‑postinstall.sh" <<POST
 LANGUAGE="$LANGUAGE"
 TIMEZONE="$TIMEZONE"
@@ -306,9 +305,7 @@ PASSWORD="$PASSWORD"
 DESKTOP="$DESKTOP"
 TARGET_DISK="$TARGET_DISK"
 POST
-
   cat >>"$ROOT_MOUNT/root/arch‑tui‑postinstall.sh" <<'POST'
-
 # Locale & time
 sed -i "s/^#\($LANGUAGE\)/\1/" /etc/locale.gen
 locale-gen
@@ -328,6 +325,13 @@ useradd -mG wheel $USERNAME
 printf "%s:%s" "$USERNAME" "$PASSWORD" | chpasswd
 printf "root:%s" "$PASSWORD" | chpasswd
 
+# Enable sudo for wheel group (password required)
+if ! grep -qE '^%wheel' /etc/sudoers ; then
+  sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+fi
+# alternatively, to allow passwordless sudo set the next line instead:
+# echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/wheel && chmod 0440 /etc/sudoers.d/wheel
+
 # Desktop environment
 case "$DESKTOP" in
   gnome)
@@ -345,29 +349,23 @@ case "$DESKTOP" in
   i3)
     pacman -S --noconfirm i3-gaps i3status dmenu ;;
   none)
-    ;; # nothing extra
+    ;;
 esac
 
 # Bootloader – UEFI only (checked earlier)
 if [[ -d /sys/firmware/efi ]]; then
-    grub-install --target=x86_64-efi \
-                 --efi-directory=/boot \
-                 --bootloader-id=Arch
+  grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=Arch
 else
-    log "ERROR: Legacy BIOS detected inside chroot – this should not happen!"
-    exit 1
+  log "ERROR: Legacy BIOS detected inside chroot – this should not happen!" ; exit 1
 fi
 
 grub-mkconfig -o /boot/grub/grub.cfg
-
 log "Configuration in chroot complete!"
 POST
-
   chmod +x "$ROOT_MOUNT/root/arch‑tui‑postinstall.sh"
   arch-chroot "$ROOT_MOUNT" /root/arch‑tui‑postinstall.sh
   rm "$ROOT_MOUNT/root/arch‑tui‑postinstall.sh"
 }
-
 ###############################################################################
 # Main flow                                                                  #
 ###############################################################################
