@@ -302,10 +302,9 @@ EOF
 systemctl enable NetworkManager
 
 # Users
-useradd -m -G wheel $USERNAME
+useradd -mG wheel $USERNAME
 printf "%s:%s" "$USERNAME" "$PASSWORD" | chpasswd
 printf "root:%s" "$PASSWORD" | chpasswd
-sed -i 's/^# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' /etc/sudoers
 
 # Bootloader
 if [[ -d /sys/firmware/efi ]]; then
